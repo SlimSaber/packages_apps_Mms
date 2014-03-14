@@ -52,6 +52,7 @@ import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.ProgressDialog;
+import android.app.Service;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
@@ -137,6 +138,7 @@ import android.widget.Toolbar;
 
 import com.android.contacts.common.util.MaterialColorMapUtils;
 import com.android.contacts.common.util.MaterialColorMapUtils.MaterialPalette;
+import com.android.contacts.common.util.PickupGestureDetector;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
 import com.android.internal.telephony.TelephonyIntents;
@@ -193,7 +195,8 @@ import com.google.android.mms.pdu.SendReq;
  */
 public class ComposeMessageActivity extends Activity
         implements View.OnClickListener, TextView.OnEditorActionListener,
-        MessageStatusListener, Contact.UpdateListener, IZoomListener {
+        MessageStatusListener, Contact.UpdateListener, IZoomListener,
+        PickupGestureDetector.PickupListener {
     public static final int REQUEST_CODE_ATTACH_IMAGE                   = 100;
     public static final int REQUEST_CODE_TAKE_PICTURE                   = 101;
     public static final int REQUEST_CODE_ATTACH_VIDEO                   = 102;
@@ -327,6 +330,8 @@ public class ComposeMessageActivity extends Activity
     }
 
     private ContentResolver mContentResolver;
+
+    private PickupGestureDetector mPickupDetector;
 
     private BackgroundQueryHandler mBackgroundQueryHandler;
 
@@ -2042,6 +2047,8 @@ public class ComposeMessageActivity extends Activity
         updateAccentColorFromTheme(true);
         initialize(savedInstanceState, 0);
 
+        mPickupDetector = new PickupGestureDetector(ComposeMessageActivity.this, this);
+
         if (TRACE) {
             android.os.Debug.startMethodTracing("compose");
         }
@@ -2515,6 +2522,12 @@ public class ComposeMessageActivity extends Activity
             }
         }, 100);
 
+        TelephonyManager tm = (TelephonyManager) getSystemService(Service.TELEPHONY_SERVICE);
+        if (MessagingPreferenceActivity.isSmartCallEnabled(ComposeMessageActivity.this)
+              && tm.getCallState() == TelephonyManager.CALL_STATE_IDLE) {
+            mPickupDetector.enable();
+        }
+
         mIsRunning = true;
         updateThreadIdIfRunning();
         mConversation.markAsRead(true);
@@ -2539,6 +2552,8 @@ public class ComposeMessageActivity extends Activity
         if (isRecipientsEditorVisible()) {
             mRecipientsEditor.removeTextChangedListener(mRecipientsWatcher);
         }
+
+        mPickupDetector.disable();
 
         // remove any callback to display a progress spinner
         if (mAsyncDialog != null) {
@@ -4741,6 +4756,20 @@ public class ComposeMessageActivity extends Activity
             text = mUnicodeFilter.filter(text);
         }
         return text;
+    }
+
+    @Override
+    public void onPickup() {
+        if (!getRecipients().isEmpty()) {
+            mPickupDetector.disable();
+
+            // call the first recipient
+            String number = getRecipients().get(0).getNumber();
+            Intent dialIntent = new Intent(Intent.ACTION_CALL);
+            dialIntent.setData(Uri.fromParts("tel", number, null));
+            dialIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(dialIntent);
+        }
     }
 
     private void resetMessage() {
