@@ -1200,6 +1200,9 @@ public class MessagingNotification {
             notification = noti.build();
         }
 
+        // Update number of notifications
+        notification.number = messageCount;
+
         // Post the notification
         nm.notify(NOTIFICATION_ID, notification);
     }
